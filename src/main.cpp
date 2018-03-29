@@ -216,6 +216,8 @@ void startServer() {
 
 void setup(){
   Serial.begin(115200);
+//http://192.168.40.1/index.html
+  pinMode(2,OUTPUT);
 
   // startWifi();
   startAP();

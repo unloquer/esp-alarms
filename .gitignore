@@ -1,0 +1,7 @@
+.pioenvs/*
+.piolibdeps/*
+
+
+*.old
+*.ino
+tags
