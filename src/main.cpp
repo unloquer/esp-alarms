@@ -17,15 +17,15 @@ int alarmsIndex = 0;
 AsyncWebServer server(80);
 
 void startAction() {
-  digitalWrite(D1, HIGH);
-  digitalWrite(2, HIGH);
+  digitalWrite(D1, LOW);
+  digitalWrite(2, LOW);
   Serial.println("Alarm: - turn lights on");
 
 }
 
 void stopAction() {
-  digitalWrite(D1, LOW);
-  digitalWrite(2, LOW);
+  digitalWrite(D1, HIGH);
+  digitalWrite(2, HIGH);
   Serial.println("Alarm: - turn lights off");
 }
 
@@ -216,8 +216,9 @@ void startServer() {
 
 void setup(){
   Serial.begin(115200);
-//http://192.168.40.1/index.html
+
   pinMode(2,OUTPUT);
+  digitalWrite(2, HIGH);
 
   // startWifi();
   startAP();
