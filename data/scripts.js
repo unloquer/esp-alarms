@@ -17,9 +17,22 @@ function time_readable(dow, hours, minutes,triegohor,triegomin) {
 }
 
 function alarmlist_update() {
-	$.get("waketimes_get", function (res) {
+	$.get("alarms", function (res) {
+		const alarms = res.split(';');
+
+		alarms.pop();
+		alarms.pop();
+
 		$("#alarmlist").html("");
-		JSON.parse(res).forEach(function (alarm) {
+		alarms.forEach(function (d) {
+			const data = d.split(',');
+			const alarm = {
+				id: data[0],
+				dow: data[2],
+				hrs: data[3],
+				min: data[4],
+				trm: data[5]
+			};
 			$("#alarmlist").append($("<tr>")
 				.append($("<td>").addClass("alarm_id").text(alarm.id))
 				.append($("<td>").addClass("alarm_time").text(time_readable(alarm.dow, alarm.hrs, alarm.min, alarm.trm)))
@@ -27,7 +40,7 @@ function alarmlist_update() {
 			);
 		});
 
-		if (JSON.parse(res).length === 0) {
+		if (alarms.length === 0) {
 			$("#alarmlist").append($("<tr>").addClass("empty").append($("<th>").text("No alarms set")));
 		}
 
@@ -38,6 +51,13 @@ function alarmlist_update() {
 			});
 		});
 	});
+}
+
+function setTime() {
+	const d = new Date();
+	const time = `h=${d.getHours()}&m=${d.getMinutes()}&s=${d.getSeconds()}&MM=${d.getMonth()+1}&DD=${d.getDate()}&YY=${d.getFullYear()-2000}`;
+	$.get(`time?${time}`, (res) => {
+	})
 }
 
 $(function () {
@@ -53,22 +73,20 @@ $(function () {
 
 	if ($("#alarmlist").length) alarmlist_update();
 
+	setTime();
+
 	$("#add").click(function () {
 		var dow = $("#dow").val();
-		var hours = parseInt($("#hours").val());
-		var minutes = parseInt($("#minutes").val());
-		var triegomin = parseInt($("#triegomin").val());
+		var hour = parseInt($("#hours").val());
+		var min = parseInt($("#minutes").val());
+		var interval = parseInt($("#triegomin").val());
 
-		if (isNaN(hours) || hours >= 24 || isNaN(minutes) || minutes >= 60) {
+		if (isNaN(hour) || hour >= 24 || isNaN(min) || min >= 60) {
 			alert("Invalid time!");
 		} else {
-			$.get("waketime_add", {	dow: dow, hrs : hours, min : minutes,
-			 												trm: triegomin}, function (res) {
-				if (res !== "ok") {
-					alert("Error: " + res);
-				} else {
-					alarmlist_update();
-				}
+			console.log(`alarm?dow=${dow}&hour=${hour}&min=${min}&interval=${interval}`);
+			$.get(`alarm?dow=${dow}&hour=${hour}&min=${min}&interval=${interval}`, function (res) {
+				alarmlist_update();
 			});
 		}
 	});

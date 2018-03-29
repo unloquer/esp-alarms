@@ -1,9 +1,5 @@
 // peticiones /waketime_add?dow=6&hrs=12&min=0
-#include <ESP8266WiFi.h>
-#include <FS.h>
-#include <ESPAsyncTCP.h>
-#include <ESPAsyncWebServer.h>
-#include <TimeAlarms.h>
+#include "app.h"
 
 const int __Z__ = 0;
 
@@ -15,16 +11,22 @@ const int __Z__ = 0;
 const char* ssid = "UPAYAKUWASI";
 const char* password = "nosotrxs";
 
+int alarms[20][6] = {}; // 20 alarms
+int alarmsIndex = 0;
+
 AsyncWebServer server(80);
 
-void startAction(){
-  Serial.println("Alarm: - turn lights on");
+void startAction() {
+  digitalWrite(D1, HIGH);
   digitalWrite(2, HIGH);
+  Serial.println("Alarm: - turn lights on");
+
 }
 
-void stopAction(){
-  Serial.println("Alarm: - turn lights off");
+void stopAction() {
+  digitalWrite(D1, LOW);
   digitalWrite(2, LOW);
+  Serial.println("Alarm: - turn lights off");
 }
 
 void clearAlarms() {
@@ -66,16 +68,16 @@ String getData(String name) {
 
   yield();
   // wdt_enable(1000);
-
+  Serial.println(line);
   return line;
 }
 
 void setAlarm(timeDayOfWeek_t dow, int hour, int min, int interval) {
   int downtimeMin = min + interval;
   int downtimeHour = downtimeMin > 59 ? hour + 1 : hour;
-  downtimeMin = downtimeMin > 59 ? downtimeHour - 60 : downtimeHour;
-  AlarmID_t idUp = Alarm.alarmRepeat(dow, hour, min, 30, startAction);
-  AlarmID_t idDown = Alarm.alarmRepeat(dow, downtimeHour, downtimeMin, 30, startAction);
+  downtimeMin = downtimeMin > 59 ? downtimeMin - 60 : downtimeMin;
+  AlarmID_t idUp = Alarm.alarmRepeat(dow, hour, min, 0, startAction);
+  AlarmID_t idDown = Alarm.alarmRepeat(dow, downtimeHour, downtimeMin, 0, stopAction);
 
   String m = idUp+","+idDown;
   m += "," + dow;
@@ -83,11 +85,21 @@ void setAlarm(timeDayOfWeek_t dow, int hour, int min, int interval) {
   m += "," + min;
   m += "," + interval;
 
+  int data[6] = { idUp, idDown, dow, hour, min, interval };
+  int idx = alarmsIndex++;
+  for (int i=0; i<6; i++) {
+    alarms[idx][i] = data[i];
+  }
+
   save("alarms", m, false);
 }
 
+void parseAlarm() {
+
+}
+
 void parseAndSetAlarm(String alarmStr) {
-  int dow = 0;
+  timeDayOfWeek_t dow = dowInvalid;
   int hour = 0;
   int min = 0;
   int interval = 0;
@@ -100,7 +112,7 @@ void parseAndSetAlarm(String alarmStr) {
     int sepIndex = alarmStrLeft.indexOf(",");
     switch (dataIndex++) {
       case DOW_INDEX:
-      dow = alarmStrLeft.substring(0, sepIndex).toInt();
+      dow = (timeDayOfWeek_t)alarmStrLeft.substring(0, sepIndex).toInt();
       break;
 
       case HOUR_INDEX:
@@ -123,6 +135,11 @@ void parseAndSetAlarm(String alarmStr) {
   }
 
   clearData("alarms");
+  setAlarm(dow, hour, min, interval);
+}
+
+void getAlarms() {
+
 }
 
 void startAlarms() {
@@ -156,16 +173,31 @@ void startWifi() {
 
 void startServer() {
   server.on("/alarms", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String res = "";
+    for (int i=0; i<alarmsIndex+1; i++) {
+      for (int j=0; j<6; j++) {
+        res.concat(alarms[i][j]);
+        if (j < 5) {
+          res.concat(",");
+        }
+      }
+      res.concat(";");
+    }
 
+    request->send(200, "text/plain", res);
   });
 
   server.on("/time", HTTP_GET, [](AsyncWebServerRequest *request) {
     int H = request->arg(__Z__).toInt();
     int M = request->arg(1).toInt();
-    int MM = request->arg(2).toInt();
-    int DD = request->arg(3).toInt();
-    int YY = request->arg(4).toInt();
-    setTime(H, M, 0, MM, DD, YY);
+    int S = request->arg(2).toInt();
+    int MM = request->arg(3).toInt();
+    int DD = request->arg(4).toInt();
+    int YY = request->arg(5).toInt();
+
+    setTime(H, M, S, DD, MM, YY);
+
+    request->send(200);
   });
 
   server.on("/alarm", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -173,7 +205,10 @@ void startServer() {
     int H = request->arg(1).toInt();
     int M = request->arg(2).toInt();
     int interval = request->arg(3).toInt();
+
     setAlarm(DOW, H, M, interval);
+
+    request->send(200);
   });
 
   server.begin();
@@ -182,7 +217,8 @@ void startServer() {
 void setup(){
   Serial.begin(115200);
 
-  startWifi();
+  // startWifi();
+  startAP();
   startServer();
   startAlarms();
 
