@@ -1,41 +1,108 @@
-// peticiones /waketime_add?dow=6&hrs=12&min=0
 #include "app.h"
+
+#define NUM_LEDS 64
+#define DATA_PIN D6
 
 const int __Z__ = 0;
 
-#define DOW_INDEX 2
-#define HOUR_INDEX 3
-#define MIN_INDEX 4
-#define INTERVAL_INDEX 5
-
-const char* ssid = "UPAYAKUWASI";
-const char* password = "nosotrxs";
-
-int alarms[20][6] = {}; // 20 alarms
-int alarmsIndex = 0;
+//const char* ssid = "C3P";
+//const char* password = "trespatios";
+const char* ssid = "UNE_6EB4";
+const char* password = "9857312100";
+CRGB leds[NUM_LEDS];
 
 AsyncWebServer server(80);
+AsyncWebSocket ws("/ws");
+AsyncEventSource events("/events");
 
-void startAction() {
-  digitalWrite(D1, LOW);
-  digitalWrite(2, LOW);
-  Serial.println("Alarm: - turn lights on");
+// función para escuchar el websocket
+void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len){
+  if(type == WS_EVT_CONNECT){
+    Serial.printf("ws[%s][%u] connect\n", server->url(), client->id());
+    client->printf("Hello Client %u :)", client->id());
+    client->ping();
+  } else if(type == WS_EVT_DISCONNECT){
+    Serial.printf("ws[%s][%u] disconnect: %u\n", server->url(), client->id());
+  } else if(type == WS_EVT_ERROR){
+    Serial.printf("ws[%s][%u] error(%u): %s\n", server->url(), client->id(), *((uint16_t*)arg), (char*)data);
+  } else if(type == WS_EVT_PONG){
+    Serial.printf("ws[%s][%u] pong[%u]: %s\n", server->url(), client->id(), len, (len)?(char*)data:"");
+  } else if(type == WS_EVT_DATA){
+    AwsFrameInfo * info = (AwsFrameInfo*)arg;
+    String msg = "";
+    if(info->final && info->index == 0 && info->len == len){
+      //the whole message is in a single frame and we got all of it's data
+      Serial.printf("ws[%s][%u] %s-message[%llu]: ", server->url(), client->id(), (info->opcode == WS_TEXT)?"text":"binary", info->len);
 
+      if(info->opcode == WS_TEXT){
+        for(size_t i=0; i < info->len; i++) {
+          // EN ESTA PARTE LLEGA EL MENSAJE CUANDO ES UN STRING
+          //msg += (char) data[i];
+          char caracter = (char)data[i];
+          if(caracter != ',') msg += caracter;
+
+          // mando un dato al cliente frontend
+          client->printf("Hello Client %u :)", client->id());
+
+        }
+        //Serial.println("saco array sin comas");
+        //Serial.println(msg);
+      } else {
+        char buff[3];
+        for(size_t i=0; i < info->len; i++) {
+          sprintf(buff, "%02x ", (uint8_t) data[i]);
+          msg += buff ;
+        }
+      }
+
+      // Serial.printf("%s\n",msg.c_str());
+      // prendo los leds
+      for(int i=0; i < NUM_LEDS; i++){
+         msg.charAt(i) == '0' ? leds[i] = CRGB::Black : leds[i] = CRGB::Red;
+      }
+
+      if(info->opcode == WS_TEXT)
+        client->text("I got your text message");
+      else
+        client->binary("I got your binary message");
+    } else {
+      //message is comprised of multiple frames or the frame is split into multiple packets
+      if(info->index == 0){
+        if(info->num == 0)
+          Serial.printf("ws[%s][%u] %s-message start\n", server->url(), client->id(), (info->message_opcode == WS_TEXT)?"text":"binary");
+        Serial.printf("ws[%s][%u] frame[%u] start[%llu]\n", server->url(), client->id(), info->num, info->len);
+      }
+
+      Serial.printf("ws[%s][%u] frame[%u] %s[%llu - %llu]: ", server->url(), client->id(), info->num, (info->message_opcode == WS_TEXT)?"text":"binary", info->index, info->index + len);
+
+      if(info->opcode == WS_TEXT){
+        for(size_t i=0; i < info->len; i++) {
+          msg += (char) data[i];
+        }
+      } else {
+        char buff[3];
+        for(size_t i=0; i < info->len; i++) {
+          sprintf(buff, "%02x ", (uint8_t) data[i]);
+          msg += buff ;
+        }
+      }
+      Serial.printf("%s\n",msg.c_str());
+
+      if((info->index + len) == info->len){
+        Serial.printf("ws[%s][%u] frame[%u] end[%llu]\n", server->url(), client->id(), info->num, info->len);
+        if(info->final){
+          Serial.printf("ws[%s][%u] %s-message end\n", server->url(), client->id(), (info->message_opcode == WS_TEXT)?"text":"binary");
+          if(info->message_opcode == WS_TEXT)
+            client->text("I got your text message");
+          else
+            client->binary("I got your binary message");
+        }
+      }
+    }
+  }
 }
 
-void stopAction() {
-  digitalWrite(D1, HIGH);
-  digitalWrite(2, HIGH);
-  Serial.println("Alarm: - turn lights off");
-}
-
-void clearAlarms() {
-}
-
-void removeAlarm(AlarmID_t ID) {
-  Alarm.free(ID);
-}
-
+/*
 void save(String name, String data, bool clear) {
   File file = SPIFFS.open(name, clear ? "w" : "a+");
   if (!file) {
@@ -45,11 +112,15 @@ void save(String name, String data, bool clear) {
   file.println(data);
   file.close();
 }
+*/
 
+/*
 void clearData(String name) {
   save(name, "", true);
 }
+*/
 
+/*
 String getData(String name) {
   File file = SPIFFS.open(name, "r");
   String line = "";
@@ -71,95 +142,9 @@ String getData(String name) {
   Serial.println(line);
   return line;
 }
+*/
 
-void setAlarm(timeDayOfWeek_t dow, int hour, int min, int interval) {
-  int downtimeMin = min + interval;
-  int downtimeHour = downtimeMin > 59 ? hour + 1 : hour;
-  downtimeMin = downtimeMin > 59 ? downtimeMin - 60 : downtimeMin;
-  AlarmID_t idUp = Alarm.alarmRepeat(dow, hour, min, 0, startAction);
-  AlarmID_t idDown = Alarm.alarmRepeat(dow, downtimeHour, downtimeMin, 0, stopAction);
-
-  String m = idUp+","+idDown;
-  m += "," + dow;
-  m += "," + hour;
-  m += "," + min;
-  m += "," + interval;
-
-  int data[6] = { idUp, idDown, dow, hour, min, interval };
-  int idx = alarmsIndex++;
-  for (int i=0; i<6; i++) {
-    alarms[idx][i] = data[i];
-  }
-
-  save("alarms", m, false);
-}
-
-void parseAlarm() {
-
-}
-
-void parseAndSetAlarm(String alarmStr) {
-  timeDayOfWeek_t dow = dowInvalid;
-  int hour = 0;
-  int min = 0;
-  int interval = 0;
-
-  int dataIndex = 0;
-  String alarmStrLeft = alarmStr.substring(0);
-  while (dataIndex < 6) {
-    // Index of the data separator
-    alarmStrLeft = "";
-    int sepIndex = alarmStrLeft.indexOf(",");
-    switch (dataIndex++) {
-      case DOW_INDEX:
-      dow = (timeDayOfWeek_t)alarmStrLeft.substring(0, sepIndex).toInt();
-      break;
-
-      case HOUR_INDEX:
-      hour = alarmStrLeft.substring(0, sepIndex).toInt();
-      break;
-
-      case MIN_INDEX:
-      min = alarmStrLeft.substring(0, sepIndex).toInt();
-      break;
-
-      case INTERVAL_INDEX:
-      interval = alarmStrLeft.substring(0, sepIndex).toInt();
-      break;
-
-      default:
-        break;
-    }
-
-    alarmStrLeft = alarmStrLeft.substring(sepIndex + 1);
-  }
-
-  clearData("alarms");
-  setAlarm(dow, hour, min, interval);
-}
-
-void getAlarms() {
-
-}
-
-void startAlarms() {
-  String alarms = getData("alarms");
-  if (alarms == "") { return; }
-  unsigned int beginIndex = 0;
-  unsigned int endIndex = 0;
-  bool more = true;
-
-  while (more) {
-    endIndex = alarms.indexOf("\n");
-    String alarm = alarms.substring(beginIndex, endIndex - 2);
-    parseAndSetAlarm(alarm);
-    beginIndex = endIndex + 1;
-    if (endIndex == alarms.length() - 1) {
-      more = false;
-    }
-  }
-}
-
+/*
 void startWifi() {
   WiFi.begin(ssid, password);
 
@@ -170,7 +155,9 @@ void startWifi() {
 
   Serial.println(WiFi.localIP());
 }
+*/
 
+/*
 void startServer() {
   server.on("/alarms", HTTP_GET, [](AsyncWebServerRequest *request) {
     String res = "";
@@ -213,22 +200,50 @@ void startServer() {
 
   server.begin();
 }
+*/
+
+
 
 void setup(){
   Serial.begin(115200);
 
-  pinMode(2,OUTPUT);
-  digitalWrite(2, HIGH);
-
-  // startWifi();
   startAP();
-  startServer();
-  startAlarms();
+  FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS);
 
   SPIFFS.begin();
+
+  ws.onEvent(onEvent);
+  server.addHandler(&ws);
+  server.addHandler(&events);
+
+  server.on("/prueba", HTTP_GET, [](AsyncWebServerRequest *request) {
+    /*
+    int H = request->arg(__Z__).toInt();
+    int M = request->arg(1).toInt();
+    int S = request->arg(2).toInt();
+    int MM = request->arg(3).toInt();
+    int DD = request->arg(4).toInt();
+    int YY = request->arg(5).toInt();
+
+    setTime(H, M, S, DD, MM, YY);
+    */
+
+    request->send(200, "text/plain", "Hola desde la petición prueba");
+
+  });
+
   server.serveStatic("/", SPIFFS, "/");
+  server.begin();
+
+
+
+  // inicializo la matrix en 0
+    for(int i=0; i < NUM_LEDS; i++){
+      leds[i] = CRGB::Black;
+    }
 }
 
 void loop() {
-  Alarm.delay(100);
+    FastLED.show();
+    FastLED.delay(1000/120);
 }
